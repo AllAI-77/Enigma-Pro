@@ -2,7 +2,7 @@
 <html lang="uz">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Enigma Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -39,12 +39,17 @@
               'fade-in': {
                 '0%': { opacity: '0', transform: 'translateY(10px)' },
                 '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'spin-slow': {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' },
               }
             },
             animation: {
               'rotor-up': 'rotor-slide-up 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
               'rotor-down': 'rotor-slide-down 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
               'fade-in': 'fade-in 0.3s ease-out',
+              'spin-slow': 'spin-slow 3s linear infinite',
             }
           },
         },
@@ -54,12 +59,23 @@
       body {
         background-color: #050505;
         color: #e2e8f0;
+        margin: 0;
+        padding: 0;
       }
       .lamp-active {
         text-shadow: 0 0 10px #f59e0b, 0 0 20px #f59e0b;
         color: #fffbeb;
         background-color: rgba(245, 158, 11, 0.4);
         border-color: #f59e0b;
+      }
+      /* Telegram Loading Overlay Fix */
+      #root:empty {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: #10b981;
+        font-family: monospace;
       }
     </style>
   <script type="importmap">
@@ -74,6 +90,14 @@
 </script>
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- Initial Loading State visible before React mounts -->
+        <div style="text-align:center;">
+            <div style="font-size: 24px; margin-bottom: 20px;">ENIGMA PRO</div>
+            <div style="font-size: 14px; opacity: 0.7;">Tizim yuklanmoqda...</div>
+        </div>
+    </div>
+    <!-- IMPORTANT: This links the React code to the HTML -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

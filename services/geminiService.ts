@@ -1,10 +1,34 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EnigmaConfig, RotorType, AlphabetMode } from '../types';
 
-export const generateDailyKey = async (mode: AlphabetMode): Promise<EnigmaConfig | null> => {
-  if (!process.env.API_KEY) return null;
+// Safe access to environment variable to prevent crash if process is undefined
+const getApiKey = () => {
+  try {
+    // Check various ways API Key might be stored depending on build tool (Vite vs Webpack)
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        // @ts-ignore
+        return process.env.API_KEY;
+    }
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+        // @ts-ignore
+        return import.meta.env.VITE_API_KEY;
+    }
+  } catch (e) {
+    console.warn("Environment variable access failed");
+  }
+  return null;
+};
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const generateDailyKey = async (mode: AlphabetMode): Promise<EnigmaConfig | null> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+      console.warn("API Key not found. AI features disabled.");
+      return null;
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   
   const isCyrillic = mode === 'cyrillic';
   const prompt = isCyrillic 
@@ -71,9 +95,10 @@ export const generateDailyKey = async (mode: AlphabetMode): Promise<EnigmaConfig
 };
 
 export const analyzeSecurity = async (message: string): Promise<string> => {
-    if (!process.env.API_KEY) return "API kaliti topilmadi.";
+    const apiKey = getApiKey();
+    if (!apiKey) return "API kaliti sozlanmagan (Vercel Environment Variables).";
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -90,9 +115,10 @@ export const analyzeSecurity = async (message: string): Promise<string> => {
 }
 
 export const explainEnigma = async (): Promise<string> => {
-    if (!process.env.API_KEY) return "API kaliti topilmadi.";
+    const apiKey = getApiKey();
+    if (!apiKey) return "API kaliti sozlanmagan.";
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
