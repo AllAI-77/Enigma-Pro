@@ -7,7 +7,7 @@ export const ALPHABET_LATIN = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 // Order: АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯЎҚҒҲ.
 export const ALPHABET_CYRILLIC = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯЎҚҒҲ.';
 
-// --- LATIN CONFIG (Standard Enigma I + M3) ---
+// --- LATIN CONFIG (Standard Enigma I + M3 + K) ---
 export const ROTOR_WIRING_LATIN: Record<RotorType, string> = {
   [RotorType.I]:   'EKMFLGDQVZNTOWYHXUSPAIBRCJ',
   [RotorType.II]:  'AJDKSIRUXBLHWTMCQGZNPYFVOE',
@@ -16,6 +16,12 @@ export const ROTOR_WIRING_LATIN: Record<RotorType, string> = {
   [RotorType.V]:   'VZBRGITYUPSDNHLXAWMJQOFECK',
   [RotorType.VI]:  'JPGVOUMFYQBENHZRDKASXLICTW', // M3 specific
   [RotorType.VII]: 'NZJHGRCXMYSWBOUFAIVLPEKQDT', // M3 specific
+  // Enigma K (Swiss)
+  [RotorType.K_I]:   'PEZUOHXSCVFMTBGLRINQJWAYDK',
+  [RotorType.K_II]:  'ZOUESYDKFWPCIQXHMVBLGNJRAT',
+  [RotorType.K_III]: 'EHRVXGAOBQUSIMZFLYNWKTPDJC',
+  [RotorType.K_IV]:  'ESOVPZJAYQUIRHXLNFTGKDCMWB', // Placeholder
+  [RotorType.K_V]:   'VZBRGITYUPSDNHLXAWMJQOFECK', // Placeholder
 };
 
 export const ROTOR_NOTCH_LATIN: Record<RotorType, string> = {
@@ -26,6 +32,11 @@ export const ROTOR_NOTCH_LATIN: Record<RotorType, string> = {
   [RotorType.V]:   'Z',
   [RotorType.VI]:  'ZM',
   [RotorType.VII]: 'ZM',
+  [RotorType.K_I]:   'Y',
+  [RotorType.K_II]:  'E',
+  [RotorType.K_III]: 'N',
+  [RotorType.K_IV]:  'J',
+  [RotorType.K_V]:   'Z',
 };
 
 export const REFLECTORS_LATIN: Record<string, string> = {
@@ -40,10 +51,14 @@ export const ROTOR_WIRING_CYRILLIC: Record<RotorType, string> = {
   [RotorType.III]: 'ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ.ЎҚҒҲЁ',
   [RotorType.IV]:  'ЭЖДЛОРПАВЫФЯЧСМИТЬБЮ.ҲГНКУЦЙЗХЎҒҚШЩЕЪЁ',
   [RotorType.V]:   'ПРОЛДЖЭЯЧСМИТЬБЮФЫВА.ЙЦУКЕНГШЩЗХЪЁЎҚҒҲ',
-  // Reusing I and II logic for placeholders for VI/VII if needed, or strictly limit Cyrillic to 5.
-  // We will limit Cyrillic model to 5 rotors in specs.
   [RotorType.VI]:  'ФҲГЖДЛОРПАВЫЯЧСМИТЬБЮЭЪЁНКУЦЙЗХЩЎҒҚ.ШЕ', // Placeholder
   [RotorType.VII]: 'ЯЧСМИТЬБЮФЫВАПРОЛДЖЭЪЁНКУЦЙЗХГШЩ.ЎҚҒҲЕ', // Placeholder
+  // Enigma K placeholders for Cyrillic (Mapping to I-V for type safety)
+  [RotorType.K_I]:   'ФҲГЖДЛОРПАВЫЯЧСМИТЬБЮЭЪЁНКУЦЙЗХЩЎҒҚ.ШЕ',
+  [RotorType.K_II]:  'ЯЧСМИТЬБЮФЫВАПРОЛДЖЭЪЁНКУЦЙЗХГШЩ.ЎҚҒҲЕ',
+  [RotorType.K_III]: 'ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ.ЎҚҒҲЁ',
+  [RotorType.K_IV]:  'ЭЖДЛОРПАВЫФЯЧСМИТЬБЮ.ҲГНКУЦЙЗХЎҒҚШЩЕЪЁ',
+  [RotorType.K_V]:   'ПРОЛДЖЭЯЧСМИТЬБЮФЫВА.ЙЦУКЕНГШЩЗХЪЁЎҚҒҲ',
 };
 
 export const ROTOR_NOTCH_CYRILLIC: Record<RotorType, string> = {
@@ -54,6 +69,11 @@ export const ROTOR_NOTCH_CYRILLIC: Record<RotorType, string> = {
   [RotorType.V]:   'М',
   [RotorType.VI]:  'А',
   [RotorType.VII]: 'А',
+  [RotorType.K_I]:   'Р',
+  [RotorType.K_II]:  'Ж',
+  [RotorType.K_III]: 'Я',
+  [RotorType.K_IV]:  'К',
+  [RotorType.K_V]:   'М',
 };
 
 export const REFLECTORS_CYRILLIC: Record<string, string> = {
@@ -86,6 +106,14 @@ export const MACHINE_SPECS: Record<EnigmaModel, MachineSpec> = {
     description: 'Naval model with additional rotors (VI, VII) for higher security.',
     mode: 'latin',
     allowedRotors: [RotorType.I, RotorType.II, RotorType.III, RotorType.IV, RotorType.V, RotorType.VI, RotorType.VII],
+    allowedReflectors: ['B', 'C']
+  },
+  'enigma-k': {
+    id: 'enigma-k',
+    name: 'Enigma K (Commercial)',
+    description: 'Commercial variant with distinct internal wiring.',
+    mode: 'latin',
+    allowedRotors: [RotorType.K_I, RotorType.K_II, RotorType.K_III, RotorType.K_IV, RotorType.K_V],
     allowedReflectors: ['B', 'C']
   },
   'enigma-uz': {

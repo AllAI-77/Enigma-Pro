@@ -9,6 +9,7 @@ import Lampboard from './components/Lampboard';
 import Plugboard from './components/Plugboard';
 
 const STORAGE_KEY = 'enigma_config_v2';
+const PRESET_KEY = 'enigma_preset_config';
 
 const App: React.FC = () => {
   // Initialize state from local storage or defaults
@@ -34,6 +35,13 @@ const App: React.FC = () => {
   const [infoText, setInfoText] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Preset State
+  const [hasPreset, setHasPreset] = useState(false);
+  const [presetSaved, setPresetSaved] = useState(false);
+  
+  // Telegram State
+  const [isTelegram, setIsTelegram] = useState(false);
+
   const liveConfigRef = useRef<EnigmaConfig>(config);
   
   // Current machine specification based on selected model
@@ -50,13 +58,28 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   }, [config]);
 
-  // Handle Model Change
-  const handleModelSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newModelId = e.target.value as EnigmaModel;
-    const newSpec = MACHINE_SPECS[newModelId];
+  // Check for existing preset on mount
+  useEffect(() => {
+    setHasPreset(!!localStorage.getItem(PRESET_KEY));
+  }, []);
 
-    // Determine default rotors for the new model
-    // If previous rotors are valid in new model, keep them (positions), otherwise reset to Rotor I
+  // Initialize Telegram Web App
+  useEffect(() => {
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand(); // Open full height
+      setIsTelegram(true);
+    }
+  }, []);
+
+  /**
+   * Updates the machine model while preserving compatible settings.
+   */
+  const updateMachineModel = (newModelId: EnigmaModel) => {
+    const newSpec = MACHINE_SPECS[newModelId];
+    
+    // 1. Validate/Migrate Rotors
     const validRotors = newSpec.allowedRotors;
     const newRotors = config.rotors.map(r => {
         if (validRotors.includes(r.type)) {
@@ -65,18 +88,31 @@ const App: React.FC = () => {
         return { type: validRotors[0], position: 0, ringSetting: 0 };
     }) as [any, any, any];
 
+    // 2. Validate/Migrate Reflector
+    const newReflector = newSpec.allowedReflectors.includes(config.reflector) 
+        ? config.reflector 
+        : newSpec.allowedReflectors[0] as any;
+
+    // 3. Preserve Plugboard if Alphabet Mode is compatible
+    const newPlugboard = (newSpec.mode === config.mode) ? config.plugboard : {};
+
     const newConfig: EnigmaConfig = {
         model: newModelId,
         mode: newSpec.mode,
         rotors: newRotors,
-        reflector: newSpec.allowedReflectors.includes(config.reflector) ? config.reflector : newSpec.allowedReflectors[0] as any,
-        plugboard: {} // Reset plugboard on model switch to avoid alphabet clashes
+        reflector: newReflector,
+        plugboard: newPlugboard
     };
 
     setConfig(newConfig);
     setInputText('');
     setOutputText('');
     setAiAnalysis('');
+  };
+
+  const handleModelSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newModelId = e.target.value as EnigmaModel;
+    updateMachineModel(newModelId);
   };
 
   const handleRotorChange = (index: number, newSettings: any) => {
@@ -93,32 +129,23 @@ const App: React.FC = () => {
   const handlePlugboardConnect = (char1: string, char2: string) => {
     if (char1 === char2) return;
     const newPlugboard = { ...config.plugboard };
-    
-    // Remove any existing connections for these chars
     if (newPlugboard[char1]) {
-        const oldPartner = newPlugboard[char1];
-        delete newPlugboard[oldPartner];
+        delete newPlugboard[newPlugboard[char1]];
     }
     if (newPlugboard[char2]) {
-        const oldPartner = newPlugboard[char2];
-        delete newPlugboard[oldPartner];
+        delete newPlugboard[newPlugboard[char2]];
     }
-
-    // Add new connection
     newPlugboard[char1] = char2;
     newPlugboard[char2] = char1;
-
     setConfig({ ...config, plugboard: newPlugboard });
   };
 
   const handlePlugboardDisconnect = (char: string) => {
     const partner = config.plugboard[char];
     if (!partner) return;
-
     const newPlugboard = { ...config.plugboard };
     delete newPlugboard[char];
     delete newPlugboard[partner];
-
     setConfig({ ...config, plugboard: newPlugboard });
   };
 
@@ -126,19 +153,13 @@ const App: React.FC = () => {
 
   const handleTypewriterInput = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (inputMode !== 'typewriter') return;
-    
     const char = e.key.toUpperCase();
-    
-    // Check if char is in valid alphabet
     if (currentAlphabet.includes(char) && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
       e.preventDefault();
-      
       const { char: encryptedChar, newConfig } = encryptCharacter(char, liveConfigRef.current);
-      
       setConfig(newConfig);
       setInputText(prev => prev + char);
       setOutputText(prev => prev + encryptedChar);
-      
       setLitChar(encryptedChar);
       setTimeout(() => setLitChar(null), 300);
     } else if (e.key === 'Backspace') {
@@ -160,11 +181,8 @@ const App: React.FC = () => {
 
   const handleGenDailyKey = async () => {
     setAiLoading(true);
-    
     const generatedConfig = await generateDailyKey(mode);
-    
     if (generatedConfig) {
-      // Merge generated rotors/plugs into current model
       setConfig(prev => ({
           ...prev,
           rotors: generatedConfig.rotors,
@@ -172,20 +190,43 @@ const App: React.FC = () => {
           plugboard: generatedConfig.plugboard
       }));
     } else {
-      // Fallback if AI fails: Reset to random internal positions.
       const rand = (n: number) => Math.floor(Math.random() * n);
       const mod = mode === 'cyrillic' ? 36 : 26;
-      
       const newConfig = JSON.parse(JSON.stringify(config)) as EnigmaConfig;
       newConfig.rotors = newConfig.rotors.map(r => ({
         ...r,
         position: rand(mod),
         ringSetting: rand(mod)
       })) as [any, any, any];
-      
       setConfig(newConfig);
     }
     setAiLoading(false);
+  };
+
+  const handleSavePreset = () => {
+    try {
+      localStorage.setItem(PRESET_KEY, JSON.stringify(config));
+      setHasPreset(true);
+      setPresetSaved(true);
+      setTimeout(() => setPresetSaved(false), 2000);
+    } catch (e) {
+      console.error("Failed to save preset", e);
+    }
+  };
+
+  const handleLoadPreset = () => {
+    const saved = localStorage.getItem(PRESET_KEY);
+    if (saved) {
+      try {
+        const parsedConfig = JSON.parse(saved);
+        setConfig(parsedConfig);
+        setInputText('');
+        setOutputText('');
+        setAiAnalysis('');
+      } catch (e) {
+        console.error("Failed to load preset", e);
+      }
+    }
   };
 
   const handleAnalyze = async () => {
@@ -221,12 +262,18 @@ const App: React.FC = () => {
       document.body.removeChild(element);
   }
 
+  // Handle sending data back to Telegram Chat
+  const handleSendToTelegram = () => {
+      if (window.Telegram?.WebApp && outputText) {
+          window.Telegram.WebApp.sendData(outputText);
+      }
+  };
+
   const handleReset = () => {
-      // Reset to defaults for current model
       const base = config.model === 'enigma-uz' ? INITIAL_CONFIG_CYRILLIC : INITIAL_CONFIG_LATIN;
       setConfig({
           ...base,
-          model: config.model // Keep current model
+          model: config.model
       });
       setInputText('');
       setOutputText('');
@@ -297,11 +344,9 @@ const App: React.FC = () => {
 
         {/* Machine Visualization Area */}
         <section className="bg-black/40 p-4 md:p-8 rounded-2xl border border-gray-800 backdrop-blur-sm shadow-2xl relative overflow-hidden">
-            {/* Background Texture */}
             <div className="absolute inset-0 opacity-5 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
             
             <div className="relative z-10 flex flex-col xl:flex-row gap-8 justify-center items-center">
-                {/* Rotors */}
                 <div className="flex flex-col items-center">
                     <div className="flex gap-2 md:gap-4 bg-black p-4 md:p-6 rounded-xl border border-gray-700 shadow-[inset_0_2px_10px_rgba(0,0,0,1)]">
                         {config.rotors.map((settings, index) => (
@@ -315,6 +360,7 @@ const App: React.FC = () => {
                             />
                         ))}
                     </div>
+                    
                     <div className="mt-4 flex gap-4 text-xs font-mono text-gray-500 items-center justify-between w-full px-2">
                         <div className="flex items-center gap-2">
                             <span>Reflektor:</span>
@@ -328,20 +374,44 @@ const App: React.FC = () => {
                                 ))}
                             </select>
                         </div>
-                        <span className="text-[10px] text-gray-600 border border-gray-800 px-2 py-0.5 rounded">
-                            {currentSpec.description.split(' ').slice(0, 4).join(' ')}...
+                        <span className="text-[10px] text-gray-600 border border-gray-800 px-2 py-0.5 rounded" title={currentSpec.description}>
+                            {currentSpec.name.split('(')[0].trim()}
                         </span>
                     </div>
+
+                    <div className="mt-3 flex gap-2 w-full px-2 justify-center border-t border-gray-800/50 pt-2">
+                        <button 
+                            onClick={handleSavePreset}
+                            className={`flex-1 text-[10px] px-2 py-1.5 rounded border transition-all font-bold tracking-wide
+                                ${presetSaved 
+                                    ? 'bg-green-900/50 border-green-500 text-green-400' 
+                                    : 'bg-military-800 border-military-600 text-gray-400 hover:text-white hover:border-gray-400 hover:bg-military-700'
+                                }`}
+                        >
+                            {presetSaved ? 'SAQLANDI! ✓' : 'SOZLAMALARNI SAQLASH'}
+                        </button>
+                         <button 
+                            onClick={handleLoadPreset}
+                            disabled={!hasPreset}
+                            className={`flex-1 text-[10px] px-2 py-1.5 rounded border transition-all font-bold tracking-wide
+                                ${hasPreset
+                                    ? 'bg-military-800 border-military-600 text-emerald-500 hover:text-emerald-300 hover:border-emerald-500 hover:bg-military-700'
+                                    : 'bg-military-900 border-military-800 text-gray-600 cursor-not-allowed'
+                                }`}
+                            title={hasPreset ? "Saqlangan sozlamalarni tiklash" : "Saqlangan sozlamalar mavjud emas"}
+                        >
+                            YUKLASH
+                        </button>
+                    </div>
+
                 </div>
                 
-                {/* Lampboard */}
                 <div className="flex-1 w-full max-w-2xl">
                     <Lampboard litChar={litChar} mode={mode} />
                 </div>
             </div>
         </section>
 
-        {/* Plugboard Section */}
         <section>
             <Plugboard 
                 plugboard={config.plugboard} 
@@ -351,12 +421,9 @@ const App: React.FC = () => {
             />
         </section>
 
-        {/* Input/Output Area */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
-            {/* Input Column */}
             <div className="flex flex-col gap-2">
-                {/* Mode Tabs */}
                 <div className="flex rounded-lg bg-military-800 p-1 border border-gray-700 w-fit">
                      <button 
                         onClick={() => switchInputMode('typewriter')}
@@ -372,7 +439,6 @@ const App: React.FC = () => {
                      </button>
                 </div>
 
-                {/* Input Card */}
                 <div className="bg-military-800 rounded-xl p-1 border border-military-500 shadow-lg flex flex-col h-80 group focus-within:border-emerald-500 transition-colors relative">
                     <div className="bg-military-900 rounded-t-lg p-3 flex justify-between items-center border-b border-military-500">
                         <label className="text-xs font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-2">
@@ -390,7 +456,6 @@ const App: React.FC = () => {
                         <textarea 
                             value={inputText}
                             onChange={(e) => {
-                                // Convert to upper case automatically for better UX
                                 setInputText(e.target.value.toUpperCase());
                             }}
                             onKeyDown={handleTypewriterInput}
@@ -413,9 +478,7 @@ const App: React.FC = () => {
                 </div>
             </div>
 
-            {/* Output Column */}
             <div className="flex flex-col gap-2">
-                 {/* Spacer for Tabs alignment */}
                  <div className="h-[34px] hidden md:block"></div> 
 
                 <div className="bg-military-800 rounded-xl p-1 border border-military-500 shadow-lg flex flex-col h-80 relative overflow-hidden">
@@ -425,6 +488,16 @@ const App: React.FC = () => {
                             Shifrlangan Matn
                         </label>
                         <div className="flex gap-2">
+                             {/* Telegram Button: Only visible inside Telegram */}
+                             {isTelegram && (
+                                <button 
+                                    onClick={handleSendToTelegram}
+                                    disabled={!outputText}
+                                    className="text-[10px] bg-blue-500 text-white px-2 py-1 rounded border border-blue-400 hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed animate-pulse"
+                                >
+                                    TELEGRAMGA YUBORISH ↗
+                                </button>
+                             )}
                             <button 
                                 onClick={handleAnalyze}
                                 disabled={!outputText || aiLoading}
@@ -437,13 +510,13 @@ const App: React.FC = () => {
                                 disabled={!outputText}
                                 className="text-[10px] bg-gray-800 px-2 py-1 rounded text-gray-300 border border-gray-600 hover:bg-gray-700 disabled:opacity-30"
                             >
-                                TXT YUKLASH
+                                TXT
                             </button>
                             <button 
                                 onClick={handleCopy}
                                 className={`text-[10px] px-2 py-1 rounded border transition-colors ${copied ? 'bg-green-900 border-green-700 text-green-300' : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'}`}
                             >
-                                {copied ? 'NUSXALANDI!' : 'NUSXA OLISH'}
+                                {copied ? 'OK' : 'COPY'}
                             </button>
                         </div>
                     </div>
@@ -452,7 +525,6 @@ const App: React.FC = () => {
                         {outputText || <span className="text-gray-700 opacity-50 italic">Natija kutilmoqda...</span>}
                     </div>
 
-                    {/* Decorative BG Element */}
                     <div className="absolute -bottom-10 -right-10 text-gray-800/20 pointer-events-none">
                         <svg width="200" height="200" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
                     </div>
@@ -461,7 +533,6 @@ const App: React.FC = () => {
 
         </section>
 
-        {/* AI Analysis Result */}
         {aiAnalysis && (
             <section className="bg-gray-800/80 border-l-4 border-neon-amber p-6 rounded shadow-lg animate-fade-in mb-8">
                 <h3 className="text-neon-amber font-bold mb-3 flex items-center gap-2 border-b border-gray-700 pb-2">
@@ -473,7 +544,6 @@ const App: React.FC = () => {
             </section>
         )}
         
-        {/* Footer Actions */}
         <div className="flex justify-center pb-8 opacity-50 hover:opacity-100 transition-opacity">
              <button onClick={handleReset} className="text-gray-500 hover:text-red-500 text-xs transition-colors uppercase tracking-widest border-b border-transparent hover:border-red-500 pb-1">
                  Tizimni Tozalash (Reset)
